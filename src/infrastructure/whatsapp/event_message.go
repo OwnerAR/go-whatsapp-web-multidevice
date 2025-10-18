@@ -10,10 +10,14 @@ import (
 	"go.mau.fi/whatsmeow/types"
 
 	"github.com/aldinokemal/go-whatsapp-web-multidevice/config"
+	domainOtomax "github.com/aldinokemal/go-whatsapp-web-multidevice/domains/otomax"
+	"github.com/aldinokemal/go-whatsapp-web-multidevice/infrastructure/otomax"
 	pkgError "github.com/aldinokemal/go-whatsapp-web-multidevice/pkg/error"
 	"github.com/aldinokemal/go-whatsapp-web-multidevice/pkg/utils"
 	"github.com/sirupsen/logrus"
+	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types/events"
+	"google.golang.org/protobuf/proto"
 )
 
 // forwardMessageToWebhook is a helper function to forward message event to webhook url
@@ -24,6 +28,182 @@ func forwardMessageToWebhook(ctx context.Context, evt *events.Message) error {
 	}
 
 	return forwardPayloadToConfiguredWebhooks(ctx, payload, "message event")
+}
+
+// createOtomaxInsertInboxRequest creates request for OtomaX InsertInbox API
+func createOtomaxInsertInboxRequest(ctx context.Context, evt *events.Message) (domainOtomax.InsertInboxRequest, error) {
+	// Extract message text
+	messageText := utils.ExtractMessageTextFromProto(evt.Message)
+	
+	// Extract phone number from JID (remove @s.whatsapp.net)
+	senderJID := evt.Info.Sender.String()
+	if senderJID == "" {
+		return domainOtomax.InsertInboxRequest{}, fmt.Errorf("failed to get sender JID from message event")
+	}
+	
+	// Remove @s.whatsapp.net suffix and :18 suffix to get just the phone number
+	phoneNumber := strings.Split(senderJID, "@")[0]
+	phoneNumber = strings.Split(phoneNumber, ":")[0] // Remove :18 suffix
+	
+	// Create OtomaX InsertInbox request
+	request := domainOtomax.InsertInboxRequest{
+		Pesan:        messageText,
+		Pengirim:     phoneNumber, // Use phone number only: 6281295749258
+		TipePengirim: "W",         // W for WhatsApp
+		KodeTerminal: config.OtomaxDefaultKodeTerminal,
+	}
+	
+	logrus.Debugf("Created OtomaX InsertInbox request: %+v", request)
+	return request, nil
+}
+
+// forwardMessageToOtomax forwards WhatsApp message to OtomaX via InsertInbox
+func forwardMessageToOtomax(ctx context.Context, evt *events.Message) error {
+	// Check if OtomaX integration is enabled
+	if !config.OtomaxEnabled {
+		logrus.Debugf("OtomaX integration is disabled, skipping message forwarding")
+		return nil
+	}
+	
+	// Skip if message is from us (outgoing messages)
+	if evt.Info.IsFromMe {
+		return nil
+	}
+	
+	// Skip group messages if not configured to forward groups
+	if !config.OtomaxForwardGroups && utils.IsGroupJID(evt.Info.Chat.String()) {
+		logrus.Debugf("Skipping group message for OtomaX forwarding")
+		return nil
+	}
+	
+	// Skip messages without text content
+	messageText := utils.ExtractMessageTextFromProto(evt.Message)
+	if strings.TrimSpace(messageText) == "" {
+		logrus.Debugf("Skipping message without text content for OtomaX forwarding")
+		return nil
+	}
+	
+	// Create OtomaX InsertInbox request
+	request, err := createOtomaxInsertInboxRequest(ctx, evt)
+	if err != nil {
+		logrus.Errorf("Failed to create OtomaX request: %v", err)
+		return err
+	}
+	
+	// Forward to OtomaX InsertInbox endpoint
+	logrus.Infof("Forwarding WhatsApp message to OtomaX InsertInbox: sender=%s, message=%s", 
+		evt.Info.Sender.String(), messageText)
+	
+	// Use OtomaX client to send request
+	err = sendRequestToOtomaxClient(ctx, request, evt.Info.Sender.String())
+	if err != nil {
+		logrus.Errorf("Failed to send request to OtomaX: %v", err)
+		return err
+	}
+	
+	logrus.Infof("Successfully sent message to OtomaX InsertInbox")
+	
+	return nil
+}
+
+// sendRequestToOtomaxClient sends request to OtomaX using the existing client
+func sendRequestToOtomaxClient(ctx context.Context, request domainOtomax.InsertInboxRequest, originalSenderJID string) error {
+	// Create OtomaX client
+	client := otomax.NewOtomaxClient()
+	
+	// Send request to OtomaX InsertInbox
+	response, err := client.InsertInbox(ctx, request)
+	if err != nil {
+		return fmt.Errorf("failed to send request to OtomaX: %w", err)
+	}
+	
+	logrus.Infof("OtomaX InsertInbox response: %+v", response)
+	
+	// Check if status requires auto reply (21: Success with reason, 41: Bukan Reseller, 42: Format Salah)
+	if response.Result.Status == 21 || response.Result.Status == 41 || response.Result.Status == 42 {
+		var replyMessage string
+		
+		if response.Result.Status == 21 {
+			// For status 21, use the "pesan" field if available, otherwise use StatusDesc
+			if response.Result.Pesan != "" {
+				replyMessage = response.Result.Pesan
+			} else {
+				replyMessage = response.Result.StatusDesc
+			}
+			logrus.Infof("Status %d requires auto reply with pesan: %s", response.Result.Status, replyMessage)
+		} else {
+			// For status 41 and 42, use StatusDesc
+			replyMessage = response.Result.StatusDesc
+			logrus.Infof("Status %d requires auto reply: %s", response.Result.Status, replyMessage)
+		}
+		
+	// Send auto reply message to WhatsApp using original sender JID
+	err = sendAutoReplyToWhatsAppWithJID(ctx, originalSenderJID, replyMessage)
+		if err != nil {
+			logrus.Errorf("Failed to send auto reply to WhatsApp: %v", err)
+			// Don't return error here, just log it
+		} else {
+			logrus.Infof("Auto reply sent successfully to %s: %s", request.Pengirim, replyMessage)
+		}
+	}
+	
+	return nil
+}
+
+// sendAutoReplyToWhatsAppWithJID sends auto reply message using specific JID
+func sendAutoReplyToWhatsAppWithJID(ctx context.Context, senderJID, statusDesc string) error {
+	// Remove device part from JID (e.g., :18) to get clean user JID
+	cleanJID := strings.Split(senderJID, ":")[0] // Remove :18 part
+	if !strings.HasSuffix(cleanJID, "@s.whatsapp.net") {
+		cleanJID = cleanJID + "@s.whatsapp.net"
+	}
+	
+	// Parse the clean JID
+	recipientJID, err := types.ParseJID(cleanJID)
+	if err != nil {
+		logrus.Errorf("Failed to parse clean JID %s: %v", cleanJID, err)
+		return fmt.Errorf("failed to parse clean JID: %w", err)
+	}
+	
+	// Send the auto-reply message using direct WhatsApp client
+	response, err := cli.SendMessage(
+		ctx,
+		recipientJID,
+		&waE2E.Message{Conversation: proto.String(statusDesc)},
+	)
+	
+	if err != nil {
+		logrus.Errorf("Failed to send OtomaX auto-reply message: %v", err)
+		return err
+	}
+	
+	logrus.Infof("OtomaX auto reply sent successfully to %s (from %s): %s (Message ID: %s)", cleanJID, senderJID, statusDesc, response.ID)
+	return nil
+}
+
+// sendAutoReplyToWhatsApp sends auto reply message to WhatsApp user using direct WhatsApp client
+func sendAutoReplyToWhatsApp(ctx context.Context, phoneNumber, statusDesc string) error {
+	// Format recipient JID
+	recipientJID := utils.FormatJID(phoneNumber + "@s.whatsapp.net")
+	
+	// Send the auto-reply message using direct WhatsApp client
+	response, err := cli.SendMessage(
+		ctx,
+		recipientJID,
+		&waE2E.Message{Conversation: proto.String(statusDesc)},
+	)
+	
+	if err != nil {
+		logrus.Errorf("Failed to send OtomaX auto-reply message: %v", err)
+		return err
+	}
+	
+	logrus.Infof("OtomaX auto reply sent successfully to %s: %s (Message ID: %s)", phoneNumber, statusDesc, response.ID)
+	
+	// TODO: Add message storage logic here if needed
+	// Similar to existing auto reply storage logic
+	
+	return nil
 }
 
 func createMessagePayload(ctx context.Context, evt *events.Message) (map[string]any, error) {

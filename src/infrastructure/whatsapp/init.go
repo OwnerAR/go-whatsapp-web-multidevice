@@ -14,6 +14,7 @@ import (
 
 	"github.com/aldinokemal/go-whatsapp-web-multidevice/config"
 	domainChatStorage "github.com/aldinokemal/go-whatsapp-web-multidevice/domains/chatstorage"
+	domainOtomax "github.com/aldinokemal/go-whatsapp-web-multidevice/domains/otomax"
 	pkgError "github.com/aldinokemal/go-whatsapp-web-multidevice/pkg/error"
 	"github.com/aldinokemal/go-whatsapp-web-multidevice/pkg/utils"
 	"github.com/aldinokemal/go-whatsapp-web-multidevice/ui/websocket"
@@ -44,6 +45,7 @@ var (
 	log           waLog.Logger
 	historySyncID int32
 	startupTime   = time.Now().Unix()
+	otomaxService domainOtomax.IOtomaxUsecase
 )
 
 // InitWaDB initializes the WhatsApp database connection
@@ -159,6 +161,16 @@ func UpdateGlobalClient(newCli *whatsmeow.Client, newDB *sqlstore.Container) {
 // GetClient returns the current global client instance (alias for GetGlobalClient)
 func GetClient() *whatsmeow.Client {
 	return cli
+}
+
+// SetOtomaxService sets the OtomaX service instance
+func SetOtomaxService(service domainOtomax.IOtomaxUsecase) {
+	otomaxService = service
+}
+
+// GetOtomaxService returns the OtomaX service instance
+func GetOtomaxService() domainOtomax.IOtomaxUsecase {
+	return otomaxService
 }
 
 // Get DB instance
@@ -483,6 +495,15 @@ func handleMessage(ctx context.Context, evt *events.Message, chatStorageRepo dom
 
 	// Forward to webhook if configured
 	handleWebhookForward(ctx, evt)
+
+	// Handle OtomaX integration if configured (using webhook approach)
+	if config.OtomaxEnabled {
+		go func() {
+			if err := forwardMessageToOtomax(ctx, evt); err != nil {
+				logrus.Errorf("Failed to forward message to OtomaX: %v", err)
+			}
+		}()
+	}
 }
 
 func buildMessageMetaParts(evt *events.Message) []string {
@@ -967,4 +988,60 @@ func handleGroupInfo(ctx context.Context, evt *events.GroupInfo) {
 			}
 		}(evt)
 	}
+}
+
+// handleOtomaxIntegration handles OtomaX integration for incoming messages
+func handleOtomaxIntegration(ctx context.Context, evt *events.Message) {
+	// Check if OtomaX integration is enabled
+	if !config.OtomaxEnabled {
+		return
+	}
+
+	// Skip if message is from us (outgoing messages)
+	if evt.Info.IsFromMe {
+		return
+	}
+
+	// Skip group messages if not configured to forward groups
+	if !config.OtomaxForwardGroups && utils.IsGroupJID(evt.Info.Chat.String()) {
+		return
+	}
+
+	// Extract message text
+	messageText := utils.ExtractMessageTextFromProto(evt.Message)
+	if strings.TrimSpace(messageText) == "" {
+		// Skip messages without text content
+		return
+	}
+
+	// Process OtomaX integration asynchronously
+	go func() {
+		if err := processOtomaxMessage(ctx, evt, messageText); err != nil {
+			logrus.Errorf("Failed to process OtomaX integration for message %s: %v", evt.Info.ID, err)
+		}
+	}()
+}
+
+// processOtomaxMessage processes message for OtomaX integration
+func processOtomaxMessage(ctx context.Context, evt *events.Message, messageText string) error {
+	senderJID := evt.Info.Sender.String()
+	chatJID := evt.Info.Chat.String()
+	
+	logrus.Infof("OtomaX Integration - Processing message: sender=%s, chat=%s, message=%s", 
+		senderJID, chatJID, messageText)
+	
+	// Get OtomaX service from global context if available
+	if otomaxService != nil {
+		// Use the OtomaX service to process the message
+		err := otomaxService.ProcessWhatsAppMessage(ctx, senderJID, messageText)
+		if err != nil {
+			logrus.Errorf("Failed to process WhatsApp message with OtomaX: %v", err)
+			return err
+		}
+		logrus.Infof("Successfully processed WhatsApp message with OtomaX")
+	} else {
+		logrus.Debugf("OtomaX service not available, skipping message processing")
+	}
+	
+	return nil
 }

@@ -599,6 +599,45 @@ func SanitizePhone(phone *string) {
 	}
 }
 
+// SanitizePhoneNumber sanitizes phone number without adding WhatsApp suffix
+func SanitizePhoneNumber(phone string) string {
+	if phone == "" {
+		return ""
+	}
+	
+	// Remove common prefixes and suffixes
+	phone = strings.TrimSpace(phone)
+	
+	// Remove WhatsApp suffixes if present
+	phone = strings.TrimSuffix(phone, config.WhatsappTypeUser)
+	phone = strings.TrimSuffix(phone, config.WhatsappTypeGroup)
+	
+	// Remove common prefixes
+	if strings.HasPrefix(phone, "+") {
+		phone = phone[1:]
+	}
+	if strings.HasPrefix(phone, "62") && len(phone) > 2 {
+		phone = "0" + phone[2:]
+	}
+	
+	return phone
+}
+
+// ExtractPhoneFromJID extracts phone number from JID
+func ExtractPhoneFromJID(jid string) string {
+	if jid == "" {
+		return ""
+	}
+	
+	// Split by @ to get the phone part
+	parts := strings.Split(jid, "@")
+	if len(parts) > 0 {
+		return SanitizePhoneNumber(parts[0])
+	}
+	
+	return ""
+}
+
 // IsOnWhatsapp checks if a number is registered on WhatsApp
 func IsOnWhatsapp(client *whatsmeow.Client, jid string) bool {
 	// only check if the jid a user with @s.whatsapp.net

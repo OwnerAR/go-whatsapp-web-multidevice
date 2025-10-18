@@ -70,6 +70,23 @@ func (e WaUploadMediaError) StatusCode() int {
 	return http.StatusInternalServerError
 }
 
+type ExternalAPIError string
+
+// Error for complying the error interface
+func (e ExternalAPIError) Error() string {
+	return string(e)
+}
+
+// ErrCode will return the error code based on the error data type
+func (e ExternalAPIError) ErrCode() string {
+	return "EXTERNAL_API_ERROR"
+}
+
+// StatusCode will return the HTTP status code based on the error data type
+func (e ExternalAPIError) StatusCode() int {
+	return http.StatusBadGateway
+}
+
 const (
 	ErrInvalidJID        = InvalidJID("your JID is invalid")
 	ErrUserNotRegistered = InvalidJID("user is not registered")

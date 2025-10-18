@@ -17,9 +17,11 @@ import (
 	domainGroup "github.com/aldinokemal/go-whatsapp-web-multidevice/domains/group"
 	domainMessage "github.com/aldinokemal/go-whatsapp-web-multidevice/domains/message"
 	domainNewsletter "github.com/aldinokemal/go-whatsapp-web-multidevice/domains/newsletter"
+	domainOtomax "github.com/aldinokemal/go-whatsapp-web-multidevice/domains/otomax"
 	domainSend "github.com/aldinokemal/go-whatsapp-web-multidevice/domains/send"
 	domainUser "github.com/aldinokemal/go-whatsapp-web-multidevice/domains/user"
 	"github.com/aldinokemal/go-whatsapp-web-multidevice/infrastructure/chatstorage"
+	"github.com/aldinokemal/go-whatsapp-web-multidevice/infrastructure/otomax"
 	"github.com/aldinokemal/go-whatsapp-web-multidevice/infrastructure/whatsapp"
 	"github.com/aldinokemal/go-whatsapp-web-multidevice/pkg/utils"
 	"github.com/aldinokemal/go-whatsapp-web-multidevice/usecase"
@@ -50,6 +52,7 @@ var (
 	messageUsecase    domainMessage.IMessageUsecase
 	groupUsecase      domainGroup.IGroupUsecase
 	newsletterUsecase domainNewsletter.INewsletterUsecase
+	otomaxUsecase     domainOtomax.IOtomaxUsecase
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -119,6 +122,41 @@ func initEnvConfig() {
 	}
 	if viper.IsSet("whatsapp_account_validation") {
 		config.WhatsappAccountValidation = viper.GetBool("whatsapp_account_validation")
+	}
+
+	// OtomaX settings
+	if viper.IsSet("otomax_enabled") {
+		config.OtomaxEnabled = viper.GetBool("otomax_enabled")
+	}
+	if envOtomaxAPIURL := viper.GetString("otomax_api_url"); envOtomaxAPIURL != "" {
+		config.OtomaxAPIURL = envOtomaxAPIURL
+	}
+	if envOtomaxAppID := viper.GetString("otomax_app_id"); envOtomaxAppID != "" {
+		config.OtomaxAppID = envOtomaxAppID
+	}
+	if envOtomaxAppKey := viper.GetString("otomax_app_key"); envOtomaxAppKey != "" {
+		config.OtomaxAppKey = envOtomaxAppKey
+	}
+	if envOtomaxDevKey := viper.GetString("otomax_dev_key"); envOtomaxDevKey != "" {
+		config.OtomaxDevKey = envOtomaxDevKey
+	}
+	if envOtomaxDefaultReseller := viper.GetString("otomax_default_reseller"); envOtomaxDefaultReseller != "" {
+		config.OtomaxDefaultReseller = envOtomaxDefaultReseller
+	}
+	if viper.IsSet("otomax_forward_incoming") {
+		config.OtomaxForwardIncoming = viper.GetBool("otomax_forward_incoming")
+	}
+	if viper.IsSet("otomax_forward_outgoing") {
+		config.OtomaxForwardOutgoing = viper.GetBool("otomax_forward_outgoing")
+	}
+	if viper.IsSet("otomax_forward_groups") {
+		config.OtomaxForwardGroups = viper.GetBool("otomax_forward_groups")
+	}
+	if viper.IsSet("otomax_forward_media") {
+		config.OtomaxForwardMedia = viper.GetBool("otomax_forward_media")
+	}
+	if viper.IsSet("otomax_auto_reply_enabled") {
+		config.OtomaxAutoReplyEnabled = viper.GetBool("otomax_auto_reply_enabled")
 	}
 }
 
@@ -201,6 +239,74 @@ func initFlags() {
 		config.WhatsappAccountValidation,
 		`enable or disable account validation --account-validation <true/false> | example: --account-validation=true`,
 	)
+
+	// OtomaX flags
+	rootCmd.PersistentFlags().BoolVarP(
+		&config.OtomaxEnabled,
+		"otomax-enabled", "",
+		config.OtomaxEnabled,
+		`enable or disable OtomaX integration --otomax-enabled <true/false> | example: --otomax-enabled=true`,
+	)
+	rootCmd.PersistentFlags().StringVarP(
+		&config.OtomaxAPIURL,
+		"otomax-api-url", "",
+		config.OtomaxAPIURL,
+		`OtomaX API URL --otomax-api-url <string> | example: --otomax-api-url="http://localhost:5000/"`,
+	)
+	rootCmd.PersistentFlags().StringVarP(
+		&config.OtomaxAppID,
+		"otomax-app-id", "",
+		config.OtomaxAppID,
+		`OtomaX App ID --otomax-app-id <string> | example: --otomax-app-id="OtomaX.Addon"`,
+	)
+	rootCmd.PersistentFlags().StringVarP(
+		&config.OtomaxAppKey,
+		"otomax-app-key", "",
+		config.OtomaxAppKey,
+		`OtomaX App Key --otomax-app-key <string> | example: --otomax-app-key="demoKey"`,
+	)
+	rootCmd.PersistentFlags().StringVarP(
+		&config.OtomaxDevKey,
+		"otomax-dev-key", "",
+		config.OtomaxDevKey,
+		`OtomaX Dev Key --otomax-dev-key <string> | example: --otomax-dev-key="YAR.OtomaX.OpenApi.App"`,
+	)
+	rootCmd.PersistentFlags().StringVarP(
+		&config.OtomaxDefaultReseller,
+		"otomax-default-reseller", "",
+		config.OtomaxDefaultReseller,
+		`OtomaX Default Reseller --otomax-default-reseller <string> | example: --otomax-default-reseller="yusuf"`,
+	)
+	rootCmd.PersistentFlags().BoolVarP(
+		&config.OtomaxForwardIncoming,
+		"otomax-forward-incoming", "",
+		config.OtomaxForwardIncoming,
+		`forward incoming messages to OtomaX --otomax-forward-incoming <true/false> | example: --otomax-forward-incoming=true`,
+	)
+	rootCmd.PersistentFlags().BoolVarP(
+		&config.OtomaxForwardOutgoing,
+		"otomax-forward-outgoing", "",
+		config.OtomaxForwardOutgoing,
+		`forward outgoing messages to OtomaX --otomax-forward-outgoing <true/false> | example: --otomax-forward-outgoing=true`,
+	)
+	rootCmd.PersistentFlags().BoolVarP(
+		&config.OtomaxForwardGroups,
+		"otomax-forward-groups", "",
+		config.OtomaxForwardGroups,
+		`forward group messages to OtomaX --otomax-forward-groups <true/false> | example: --otomax-forward-groups=false`,
+	)
+	rootCmd.PersistentFlags().BoolVarP(
+		&config.OtomaxForwardMedia,
+		"otomax-forward-media", "",
+		config.OtomaxForwardMedia,
+		`forward media messages to OtomaX --otomax-forward-media <true/false> | example: --otomax-forward-media=true`,
+	)
+	rootCmd.PersistentFlags().BoolVarP(
+		&config.OtomaxAutoReplyEnabled,
+		"otomax-auto-reply-enabled", "",
+		config.OtomaxAutoReplyEnabled,
+		`enable auto reply for OtomaX --otomax-auto-reply-enabled <true/false> | example: --otomax-auto-reply-enabled=true`,
+	)
 }
 
 func initChatStorage() (*sql.DB, error) {
@@ -266,6 +372,19 @@ func initApp() {
 	messageUsecase = usecase.NewMessageService(chatStorageRepo)
 	groupUsecase = usecase.NewGroupService()
 	newsletterUsecase = usecase.NewNewsletterService()
+
+	// Initialize OtomaX service if enabled
+	if config.OtomaxEnabled {
+		otomaxClient := otomax.NewOtomaxClient()
+		otomaxUsecase = usecase.NewOtomaxService(otomaxClient, sendUsecase)
+		
+		// Set OtomaX service in WhatsApp infrastructure for message processing
+		whatsapp.SetOtomaxService(otomaxUsecase)
+		
+		logrus.Infof("OtomaX integration initialized with API URL: %s", config.OtomaxAPIURL)
+	} else {
+		logrus.Info("OtomaX integration is disabled")
+	}
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.

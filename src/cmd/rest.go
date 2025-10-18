@@ -96,6 +96,12 @@ func restServer(_ *cobra.Command, _ []string) {
 	rest.InitRestGroup(apiGroup, groupUsecase)
 	rest.InitRestNewsletter(apiGroup, newsletterUsecase)
 
+	// Initialize OtomaX REST endpoints if enabled
+	if config.OtomaxEnabled && otomaxUsecase != nil {
+		rest.InitRestOtomax(apiGroup, otomaxUsecase)
+		logrus.Infof("OtomaX REST endpoints initialized")
+	}
+
 	apiGroup.Get("/", func(c *fiber.Ctx) error {
 		return c.Render("views/index", fiber.Map{
 			"AppHost":        fmt.Sprintf("%s://%s", c.Protocol(), c.Hostname()),

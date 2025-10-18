@@ -38,12 +38,14 @@ The application is organized using domain-driven design principles:
 - [src/domains/group/](mdc:src/domains/group) - Group-related domain models
 - [src/domains/message/](mdc:src/domains/message) - Message-related domain models
 - [src/domains/newsletter/](mdc:src/domains/newsletter) - Newsletter-related domain models
+- [src/domains/otomax/](mdc:src/domains/otomax) - Otomax API integration domain models and interfaces
 - [src/domains/send/](mdc:src/domains/send) - Message sending domain models
 - [src/domains/user/](mdc:src/domains/user) - User-related domain models
 
 #### Infrastructure
 
 - [src/infrastructure/chatstorage/](mdc:src/infrastructure/chatstorage) - Chat storage repository and WhatsApp integration
+- [src/infrastructure/otomax/](mdc:src/infrastructure/otomax) - Otomax API client implementation and HTTP communication
 - [src/infrastructure/whatsapp/](mdc:src/infrastructure/whatsapp) - WhatsApp client implementation and related infrastructure
 
 #### User Interface
@@ -51,6 +53,7 @@ The application is organized using domain-driven design principles:
 - [src/ui/rest/](mdc:src/ui/rest) - REST API implementation
   - [src/ui/rest/helpers/](mdc:src/ui/rest/helpers) - Helper functions for REST handlers
   - [src/ui/rest/middleware/](mdc:src/ui/rest/middleware) - Middleware components for request processing
+  - [src/ui/rest/otomax.go](mdc:src/ui/rest/otomax.go) - Otomax API webhook endpoints and REST handlers
 - [src/ui/websocket/](mdc:src/ui/websocket) - WebSocket implementation for real-time communication
 - [src/ui/mcp/](mdc:src/ui/mcp) - Model Context Protocol server to communication with AI Agent
 
@@ -62,6 +65,7 @@ The application is organized using domain-driven design principles:
 #### Use Cases
 
 - [src/usecase/](mdc:src/usecase) - Application services that implement business logic
+  - [src/usecase/otomax.go](mdc:src/usecase/otomax.go) - Otomax API integration business logic and message handling
 
 #### Static Resources
 
@@ -73,6 +77,7 @@ The application is organized using domain-driven design principles:
 #### Validation
 
 - [src/validations/](mdc:src/validations) - Request validation logic
+  - [src/validations/otomax_validation.go](mdc:src/validations/otomax_validation.go) - Otomax API request validation logic
 
 #### Views
 
@@ -102,6 +107,7 @@ The application is organized using domain-driven design principles:
 - Webhooks for message events
 - Auto-reply functionality
 - Model Context Protocol (MCP) server for AI agent communication
+- **Otomax API Integration** - Bidirectional message handling and forwarding with external Otomax API
 
 ## Application Flow
 
@@ -124,3 +130,136 @@ The application is organized using domain-driven design principles:
 3. Model Context Protocol server is initialized for AI agent communication
 4. WhatsApp client services are made available through MCP protocol
 5. The MCP server listens for AI agent requests
+
+## Otomax API Integration
+
+### Architecture Overview
+
+The Otomax API integration provides bidirectional message handling between WhatsApp and external Otomax API services:
+
+```
+WhatsApp ↔ WhatsApp Center ↔ Otomax API
+```
+
+### Integration Components
+
+#### 1. Domain Layer (`src/domains/otomax/`)
+- **Models**: Request/response structures for Otomax API communication
+- **Interfaces**: Contracts for Otomax operations (message sending, receiving, status handling)
+- **Types**: Data structures for message transformation between WhatsApp and Otomax formats
+
+#### 2. Infrastructure Layer (`src/infrastructure/otomax/`)
+- **Client**: HTTP client for communicating with Otomax API endpoints
+- **Authentication**: API key/token management and request signing
+- **Retry Logic**: Exponential backoff and error handling for failed requests
+- **Rate Limiting**: Request throttling to respect API limits
+
+#### 3. Use Case Layer (`src/usecase/otomax.go`)
+- **Message Forwarding**: Transform WhatsApp messages to Otomax format and send
+- **Webhook Processing**: Handle incoming messages from Otomax and forward to WhatsApp
+- **Status Synchronization**: Sync message delivery status between platforms
+- **Error Handling**: Comprehensive error handling and logging
+
+#### 4. REST API Layer (`src/ui/rest/otomax.go`)
+- **Webhook Endpoints**: Receive incoming messages from Otomax API
+- **Send Endpoints**: Send messages to Otomax API via WhatsApp Center
+- **Status Endpoints**: Check integration status and health
+- **Configuration Endpoints**: Manage Otomax API settings
+
+#### 5. Validation Layer (`src/validations/otomax_validation.go`)
+- **Request Validation**: Validate incoming Otomax webhook payloads
+- **Data Sanitization**: Clean and sanitize message content
+- **Security Validation**: Verify webhook signatures and API credentials
+
+### Message Flow
+
+#### WhatsApp to OtomaX Integration
+1. **WhatsApp Message Received**: WhatsApp Center receives new message from WhatsApp
+2. **Message Processing**: Message is processed and validated by existing WhatsApp handler
+3. **InsertInbox to OtomaX**: Message data is sent to OtomaX via `InsertInbox` endpoint
+4. **OtomaX Processing**: OtomaX processes the message and performs required operations
+5. **Callback Response**: OtomaX sends callback to WhatsApp Center via configured `SetOutboxCallback` URL
+
+#### Callback Handling (OtomaX → WhatsApp Center)
+1. **Callback Received**: WhatsApp Center receives callback from OtomaX
+2. **Callback Processing**: Process callback data and extract results
+3. **Response to WhatsApp**: Send response back to original WhatsApp sender if needed
+4. **Status Update**: Update message status and logging
+
+#### Integration Flow Summary
+- **Primary Direction**: WhatsApp → WhatsApp Center → OtomaX (via `InsertInbox`)
+- **Callback Direction**: OtomaX → WhatsApp Center (via `SetOutboxCallback` configured URL)
+- **Message Types**: Text messages, commands, and system responses
+- **Reseller Integration**: Handle reseller-specific message routing and validation
+
+### Configuration
+
+#### Environment Variables
+```bash
+# Otomax API Configuration
+OTOMAX_API_URL=http://localhost:5000/
+OTOMAX_APP_ID=OtomaX.Addon
+OTOMAX_APP_KEY=demoKey
+OTOMAX_DEV_KEY=YAR.OtomaX.OpenApi.App
+OTOMAX_ENABLED=true
+
+# Message Forwarding Settings
+OTOMAX_FORWARD_INCOMING=true
+OTOMAX_FORWARD_OUTGOING=true
+OTOMAX_FORWARD_GROUPS=false
+OTOMAX_FORWARD_MEDIA=true
+
+# Reseller Configuration
+OTOMAX_DEFAULT_RESELLER=yusuf
+OTOMAX_AUTO_REPLY_ENABLED=true
+```
+
+#### Command Line Flags
+```bash
+# Enable Otomax integration
+./whatsapp rest --otomax-enabled=true --otomax-api-url="http://localhost:5000/" --otomax-app-id="OtomaX.Addon"
+
+# Configure authentication
+./whatsapp rest --otomax-app-key="demoKey" --otomax-dev-key="YAR.OtomaX.OpenApi.App"
+
+# Configure message forwarding
+./whatsapp rest --otomax-forward-groups=false --otomax-default-reseller="yusuf"
+```
+
+### Security Features
+
+- **HMAC-SHA256 Authentication**: Complex token-based authentication system
+  - Metadata encoding with Base64
+  - Double HMAC signature generation
+  - Token format: `{base64_metadata}.{base64_signature}`
+- **Request Body Signing**: All requests signed with HMAC-SHA256 of request body
+- **Input Validation**: Comprehensive validation of all incoming data
+- **Rate Limiting**: Built-in rate limiting to prevent API abuse
+- **Error Logging**: Detailed logging for security monitoring and debugging
+
+### Otomax API Endpoints Integration
+
+#### Core Messaging Endpoints
+- **`InsertInbox`**: Send WhatsApp messages to Otomax for processing
+- **`SetOutboxCallback`**: Configure callback URL where Otomax will send response
+- **`GetOutboxCallback`**: Retrieve configured callback URL settings
+- **`UpdateStatusOutbox`**: Update message delivery status (if needed)
+
+#### Reseller Management
+- **`GetRs`**: Get reseller information and validation
+- **`GetSaldoRs`**: Check reseller balance
+- **`TesPinRs`**: Validate reseller PIN authentication
+- **`TambahSaldo`**: Add balance to reseller account
+
+#### Product & Transaction
+- **`QueryProduk`**: Query available products
+- **`QueryOperator`**: Query available operators
+- **`GetTrx`**: Get transaction details
+- **`GetFormatRequest`**: Get request format templates
+
+### Monitoring and Health Checks
+
+- **Health Endpoint**: `/otomax/health` - Check integration status
+- **Status Endpoint**: `/otomax/status` - Get detailed integration information
+- **Metrics**: Message count, success/failure rates, response times
+- **Logging**: Comprehensive logging for troubleshooting and monitoring

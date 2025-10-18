@@ -40,4 +40,18 @@ var (
 	ChatStorageURI               = "file:storages/chatstorage.db"
 	ChatStorageEnableForeignKeys = true
 	ChatStorageEnableWAL         = true
+
+	// OtomaX API Configuration
+	OtomaxEnabled               = false
+	OtomaxAPIURL               = "http://localhost:5000/"
+	OtomaxAppID                = "OtomaX.Addon"
+	OtomaxAppKey               = "demoKey"
+	OtomaxDevKey               = "YAR.OtomaX.OpenApi.App"
+	OtomaxDefaultReseller      = ""
+	OtomaxForwardIncoming      = true
+	OtomaxForwardOutgoing      = true
+	OtomaxForwardGroups        = false
+	OtomaxForwardMedia         = true
+	OtomaxAutoReplyEnabled     = true
+	OtomaxDefaultKodeTerminal = 2
 )
