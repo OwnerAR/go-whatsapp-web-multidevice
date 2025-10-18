@@ -419,11 +419,51 @@ paths:
                 $ref: '#/components/schemas/ErrorInternalServer'
   
   /send/message:
+    get:
+      operationId: sendMessageGet
+      tags:
+        - send
+      summary: Send Message (GET)
+      description: Send message via GET request with query parameters
+      parameters:
+        - name: phone
+          in: query
+          required: true
+          schema:
+            type: string
+            example: '6289685028129@s.whatsapp.net'
+          description: Phone number with country code
+        - name: message
+          in: query
+          required: true
+          schema:
+            type: string
+            example: 'Hello from GET request'
+          description: Message to send
+      responses:
+        '200':
+          description: Message sent successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendMessageResponse'
+        '400':
+          description: Bad Request - Missing required parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorValidation'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorInternalServer'
     post:
       operationId: sendMessage
       tags:
         - send
-      summary: Send Message
+      summary: Send Message (POST)
       requestBody:
         content:
           application/json:

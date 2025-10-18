@@ -13,6 +13,7 @@ type Send struct {
 func InitRestSend(app fiber.Router, service domainSend.ISendUsecase) Send {
 	rest := Send{Service: service}
 	app.Post("/send/message", rest.SendText)
+	app.Get("/send/message", rest.SendTextGet)
 	app.Post("/send/image", rest.SendImage)
 	app.Post("/send/file", rest.SendFile)
 	app.Post("/send/video", rest.SendVideo)
@@ -34,6 +35,54 @@ func (controller *Send) SendText(c *fiber.Ctx) error {
 
 	utils.SanitizePhone(&request.Phone)
 
+	response, err := controller.Service.SendText(c.UserContext(), request)
+	utils.PanicIfNeeded(err)
+
+	return c.JSON(utils.ResponseData{
+		Status:  200,
+		Code:    "SUCCESS",
+		Message: response.Status,
+		Results: response,
+	})
+}
+
+// SendTextGet handles HTTP GET request for sending text message via query parameters
+func (controller *Send) SendTextGet(c *fiber.Ctx) error {
+	// Get query parameters
+	phone := c.Query("phone")
+	message := c.Query("message")
+	
+	// Validate required parameters
+	if phone == "" {
+		return c.Status(400).JSON(utils.ResponseData{
+			Status:  400,
+			Code:    "VALIDATION_ERROR",
+			Message: "Phone parameter is required",
+			Results: nil,
+		})
+	}
+	
+	if message == "" {
+		return c.Status(400).JSON(utils.ResponseData{
+			Status:  400,
+			Code:    "VALIDATION_ERROR",
+			Message: "Message parameter is required",
+			Results: nil,
+		})
+	}
+
+	// Create request object
+	request := domainSend.MessageRequest{
+		BaseRequest: domainSend.BaseRequest{
+			Phone: phone,
+		},
+		Message: message,
+	}
+
+	// Sanitize phone number
+	utils.SanitizePhone(&request.Phone)
+
+	// Send message
 	response, err := controller.Service.SendText(c.UserContext(), request)
 	utils.PanicIfNeeded(err)
 
