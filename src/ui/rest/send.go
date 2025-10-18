@@ -1,6 +1,8 @@
 package rest
 
 import (
+	"strings"
+
 	domainSend "github.com/aldinokemal/go-whatsapp-web-multidevice/domains/send"
 	"github.com/aldinokemal/go-whatsapp-web-multidevice/pkg/utils"
 	"github.com/gofiber/fiber/v2"
@@ -71,16 +73,36 @@ func (controller *Send) SendTextGet(c *fiber.Ctx) error {
 		})
 	}
 
+	// Normalize phone number format
+	// Handle various phone number formats: +6285219898489, 6285219898489, 085219898489
+	normalizedPhone := phone
+	
+	// Remove spaces
+	normalizedPhone = strings.TrimSpace(normalizedPhone)
+	
+	// Remove + prefix if present
+	if strings.HasPrefix(normalizedPhone, "+") {
+		normalizedPhone = normalizedPhone[1:]
+	}
+	
+	// Convert Indonesian local format (08xxx) to international format (628xxx)
+	// This handles cases like 085219898489 -> 6285219898489
+	if strings.HasPrefix(normalizedPhone, "0") && len(normalizedPhone) > 1 {
+		normalizedPhone = "62" + normalizedPhone[1:]
+	}
+	
+	// If phone doesn't already have @s.whatsapp.net suffix, add it
+	if !strings.Contains(normalizedPhone, "@") {
+		normalizedPhone = normalizedPhone + "@s.whatsapp.net"
+	}
+
 	// Create request object
 	request := domainSend.MessageRequest{
 		BaseRequest: domainSend.BaseRequest{
-			Phone: phone,
+			Phone: normalizedPhone,
 		},
 		Message: message,
 	}
-
-	// Sanitize phone number
-	utils.SanitizePhone(&request.Phone)
 
 	// Send message
 	response, err := controller.Service.SendText(c.UserContext(), request)
