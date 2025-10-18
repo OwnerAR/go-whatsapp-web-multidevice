@@ -1,12 +1,15 @@
 package otomax
 
+import "time"
+
 // InsertInboxRequest represents the request structure for InsertInbox endpoint
 type InsertInboxRequest struct {
-	Pesan         string `json:"pesan" validate:"required"`         // Message content
-	KodeReseller  string `json:"kode_reseller" validate:"omitempty"` // Reseller code
-	Pengirim      string `json:"pengirim" validate:"required"`      // Sender phone number
-	TipePengirim  string `json:"tipe_pengirim" validate:"required"` // Sender type (W for WhatsApp)
-	KodeTerminal  int    `json:"kode_terminal" validate:"required"` // Terminal code
+	Pesan         string    `json:"pesan" validate:"required"`         // Message content
+	KodeReseller  string    `json:"kode_reseller" validate:"omitempty"` // Reseller code
+	Pengirim      string    `json:"pengirim" validate:"required"`      // Sender phone number
+	TipePengirim  string    `json:"tipe_pengirim" validate:"required"` // Sender type (W for WhatsApp)
+	KodeTerminal  int       `json:"kode_terminal" validate:"required"` // Terminal code
+	Exp           time.Time `json:"_exp"`                              // Expiration time (UTC+0) for security
 }
 
 // InsertInboxResponse represents the response structure for InsertInbox endpoint

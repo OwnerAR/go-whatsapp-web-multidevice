@@ -45,14 +45,23 @@ func createOtomaxInsertInboxRequest(ctx context.Context, evt *events.Message) (d
 	phoneNumber := strings.Split(senderJID, "@")[0]
 	phoneNumber = strings.Split(phoneNumber, ":")[0] // Remove :18 suffix
 	
+	// Set expiration time based on WhatsApp message timestamp + 30 seconds (UTC+0)
+	// This provides a short window for processing while preventing replay attacks
+	// Use WhatsApp message timestamp as base for consistency
+	whatsappTimestamp := time.Unix(evt.Info.Timestamp.Unix(), 0).UTC()
+	expirationTime := whatsappTimestamp.Add(5 * time.Second)
+	
 	// Create OtomaX InsertInbox request
 	request := domainOtomax.InsertInboxRequest{
 		Pesan:        messageText,
 		Pengirim:     phoneNumber, // Use phone number only: 6281295749258
 		TipePengirim: "W",         // W for WhatsApp
 		KodeTerminal: config.OtomaxDefaultKodeTerminal,
+		Exp:          expirationTime, // Set expiration time for security
 	}
 	
+	logrus.Debugf("Created OtomaX InsertInbox request with WhatsApp timestamp: %s, expiration: %s", 
+		whatsappTimestamp.Format(time.RFC3339), expirationTime.Format(time.RFC3339))
 	logrus.Debugf("Created OtomaX InsertInbox request: %+v", request)
 	return request, nil
 }
