@@ -1,0 +1,24 @@
+[Unit]
+Description=WhatsApp Center - WhatsApp Web Multidevice API with OtomaX Integration
+Documentation=https://github.com/OwnerAR/go-whatsapp-web-multidevice
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/root/linux/whatsapp_7.9.0_linux_amd64
+ExecStart=/root/linux/whatsapp_7.9.0_linux_amd64/whatsapp rest
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=whatsapp-center
+
+# Environment variables will be loaded from .env file in WorkingDirectory
+
+# Resource limits
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

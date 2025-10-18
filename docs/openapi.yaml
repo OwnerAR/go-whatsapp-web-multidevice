@@ -431,8 +431,8 @@ paths:
           required: true
           schema:
             type: string
-            example: '6289685028129@s.whatsapp.net'
-          description: Phone number with country code
+            example: '+6285219898489'
+          description: Phone number with country code (supports various formats: +6285219898489, 6285219898489, 085219898489)
         - name: message
           in: query
           required: true

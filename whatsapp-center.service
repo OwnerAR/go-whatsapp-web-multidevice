@@ -1,0 +1,46 @@
+[Unit]
+Description=WhatsApp Center - WhatsApp Web Multidevice API with OtomaX Integration
+Documentation=https://github.com/OwnerAR/go-whatsapp-web-multidevice
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=whatsapp
+Group=whatsapp
+WorkingDirectory=/opt/whatsapp-center
+ExecStart=/opt/whatsapp-center/whatsapp rest
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=whatsapp-center
+
+# Environment variables
+Environment=PORT=3000
+Environment=HOST=0.0.0.0
+Environment=LOG_LEVEL=info
+Environment=OTOMAX_ENABLED=true
+Environment=OTOMAX_API_URL=https://api.otomax.id
+Environment=OTOMAX_APP_ID=your_app_id
+Environment=OTOMAX_APP_KEY=your_app_key
+Environment=OTOMAX_DEV_KEY=your_dev_key
+Environment=OTOMAX_DEFAULT_RESELLER=default_reseller
+Environment=OTOMAX_AUTO_REPLY_ENABLED=true
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/whatsapp-center/storages
+ReadWritePaths=/opt/whatsapp-center/statics
+
+# Resource limits
+LimitNOFILE=65536
+MemoryMax=1G
+CPUQuota=200%
+
+[Install]
+WantedBy=multi-user.target
