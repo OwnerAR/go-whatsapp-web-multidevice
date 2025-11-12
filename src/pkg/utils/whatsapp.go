@@ -642,7 +642,7 @@ func ExtractPhoneFromJID(jid string) string {
 func IsOnWhatsapp(client *whatsmeow.Client, jid string) bool {
 	// only check if the jid a user with @s.whatsapp.net
 	if strings.Contains(jid, "@s.whatsapp.net") {
-		data, err := client.IsOnWhatsApp([]string{jid})
+		data, err := client.IsOnWhatsApp(context.Background(), []string{jid})
 		if err != nil {
 			logrus.Error("Failed to check if user is on whatsapp: ", err)
 			return false
